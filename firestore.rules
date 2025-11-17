@@ -1,0 +1,44 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      // In a real app, this would check a 'roles' collection or custom claims.
+      // For now, we allow a specific UID to be the admin for simplicity.
+      // This is NOT secure for production.
+      return request.auth.token.email == 'admin@aurora.com';
+    }
+
+    // USER-ACCESSIBLE RULES
+    match /users/{userId} {
+      // CREATE: Any signed-in user can create their OWN user document,
+      // but the status MUST be 'pending'. They cannot create documents for others.
+      allow create: if isOwner(userId)
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.email == request.auth.token.email;
+
+      // READ: Users can only read their OWN document. Admins can read any document.
+      allow get: if isOwner(userId) || isAdmin();
+
+      // LIST: ONLY admins can list all user documents.
+      allow list: if isAdmin();
+
+      // UPDATE: Users cannot update their own document. ONLY admins can update user documents
+      // (e.g., to change their status from 'pending' to 'active').
+      allow update: if isAdmin();
+
+      // DELETE: Only admins can delete user documents.
+      allow delete: if isAdmin();
+    }
+  }
+}
